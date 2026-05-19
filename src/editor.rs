@@ -3,6 +3,10 @@ use terminal::{Position, Size, Terminal};
 
 mod terminal;
 
+const NAME: &str = env!("CARGO_PKG_NAME");
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+const FORMAT: &str = " editor —— version ";
+
 pub struct Editor {
     should_quit: bool,
 }
@@ -67,7 +71,14 @@ impl Editor {
                 y: current_row,
             })?;
             Terminal::clear_line()?;
-            Terminal::print("~")?;
+            if current_row == height / 3 {
+                let string_length = NAME.len() + FORMAT.len() + VERSION.len();
+                let Size { width, .. } = Terminal::size()?;
+                let padding = " ".repeat(width.saturating_sub(string_length) / 2 - 1);
+                Terminal::print(format!("~{padding}{NAME}{FORMAT}{VERSION}"))?;
+            } else {
+                Terminal::print("~")?;
+            }
         }
         Ok(())
     }

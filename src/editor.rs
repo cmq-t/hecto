@@ -1,3 +1,4 @@
+use clap::Parser;
 use crossterm::event::{Event, Event::Key, KeyCode, KeyEvent, KeyModifiers, read};
 use std::cmp::min;
 use terminal::{Position, Terminal};
@@ -5,6 +6,13 @@ use view::View;
 
 mod terminal;
 mod view;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Name of the person to greet
+    filename: Option<String>,
+}
 
 #[derive(Default)]
 pub struct Location {
@@ -29,11 +37,13 @@ pub struct Editor {
 }
 
 impl Editor {
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<(), std::io::Error> {
+        self.handle_args();
         Terminal::initialize().unwrap();
         let result = self.repl();
         Terminal::terminate().unwrap();
         result.unwrap();
+        Ok(())
     }
 
     fn repl(&mut self) -> Result<(), std::io::Error> {
@@ -102,5 +112,12 @@ impl Editor {
             _ => (),
         }
         Ok(())
+    }
+
+    fn handle_args(&mut self) {
+        let args = Args::parse();
+        if let Some(filename) = args.filename {
+            self.view.load(filename);
+        }
     }
 }

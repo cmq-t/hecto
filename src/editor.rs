@@ -1,21 +1,34 @@
-use crossterm::event::{Event, Event::Key, KeyCode::Char, KeyEvent, KeyModifiers, read};
-use terminal::{Position, Size, Terminal};
+use crossterm::event::{Event, Event::Key, KeyCode, KeyEvent, KeyModifiers, read};
+use std::cmp::min;
+use terminal::{Position, Terminal};
+use view::View;
 
 mod terminal;
+mod view;
 
-const NAME: &str = env!("CARGO_PKG_NAME");
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-const FORMAT: &str = " editor —— version ";
+#[derive(Default)]
+pub struct Location {
+    x: usize,
+    y: usize,
+}
 
+impl Location {
+    fn to_position(&self) -> Position {
+        Position {
+            col: self.x,
+            row: self.y,
+        }
+    }
+}
+
+#[derive(Default)]
 pub struct Editor {
     should_quit: bool,
+    cursor: Location,
+    view: View,
 }
 
 impl Editor {
-    pub const fn default() -> Self {
-        Self { should_quit: false }
-    }
-
     pub fn run(&mut self) {
         Terminal::initialize().unwrap();
         let result = self.repl();
@@ -30,55 +43,63 @@ impl Editor {
                 break;
             }
             let event = read()?;
-            self.evaluate_event(&event);
+            self.evaluate_event(&event)?;
         }
         Ok(())
     }
 
-    fn evaluate_event(&mut self, event: &Event) {
+    fn evaluate_event(&mut self, event: &Event) -> Result<(), std::io::Error> {
         if let Key(KeyEvent {
             code, modifiers, ..
         }) = event
         {
             match code {
-                Char('q') if *modifiers == KeyModifiers::CONTROL => {
+                KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::PageUp
+                | KeyCode::PageDown
+                | KeyCode::Home
+                | KeyCode::End => {
+                    self.move_cursor(*code)?;
+                }
+                KeyCode::Char('q') if *modifiers == KeyModifiers::CONTROL => {
                     self.should_quit = true;
                 }
                 _ => (),
             }
         }
+        Ok(())
     }
 
     fn refresh_screen(&self) -> Result<(), std::io::Error> {
-        Terminal::hide_cursor()?;
+        Terminal::hide_caret()?;
         if self.should_quit {
             Terminal::clear_screen()?;
             Terminal::print("Goodbye!\r\n")?;
         } else {
-            Self::draw_rows()?;
-            Terminal::move_cursor_to(Position { x: 0, y: 0 })?;
+            self.view.render()?;
+            Terminal::move_caret_to(self.cursor.to_position())?;
         }
-        Terminal::show_cursor()?;
+        Terminal::show_caret()?;
         Terminal::execute()?;
         Ok(())
     }
 
-    fn draw_rows() -> Result<(), std::io::Error> {
-        let Size { height, .. } = Terminal::size()?;
-        for current_row in 0..height {
-            Terminal::move_cursor_to(Position {
-                x: 0,
-                y: current_row,
-            })?;
-            Terminal::clear_line()?;
-            if current_row == height / 3 {
-                let string_length = NAME.len() + FORMAT.len() + VERSION.len();
-                let Size { width, .. } = Terminal::size()?;
-                let padding = " ".repeat(width.saturating_sub(string_length) / 2 - 1);
-                Terminal::print(format!("~{padding}{NAME}{FORMAT}{VERSION}"))?;
-            } else {
-                Terminal::print("~")?;
-            }
+    fn move_cursor(&mut self, code: KeyCode) -> Result<(), std::io::Error> {
+        let size = Terminal::size()?;
+        match code {
+            KeyCode::Up => self.cursor.y = self.cursor.y.saturating_sub(1),
+            KeyCode::Down => self.cursor.y = min(self.cursor.y.saturating_add(1), size.height - 1),
+            KeyCode::Left => self.cursor.x = self.cursor.x.saturating_sub(1),
+            KeyCode::Right => self.cursor.x = min(self.cursor.x.saturating_add(1), size.width - 1),
+            KeyCode::PageUp => self.cursor.y = 0,
+            KeyCode::PageDown => self.cursor.y = size.height - 1,
+            KeyCode::Home => self.cursor.x = 0,
+            KeyCode::End => self.cursor.x = size.width - 1,
+            // TODO, someday
+            _ => (),
         }
         Ok(())
     }
